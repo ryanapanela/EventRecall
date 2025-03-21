@@ -1,0 +1,500 @@
+---
+title: "Visual Recall Analysis"
+output: html_document
+date: '2024-04-04'
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(emmeans)
+library(lmerTest)
+library(DescTools)
+library(broom)
+library(patchwork)
+library(ggdist)
+library(parameters)
+library(broom.mixed)
+library(MuMIn)
+```
+
+## Constants
+
+```{r}
+remove = c(3, 4)
+colours = c('#3D97DB', '#44c3dc','#4f74c9', '#eb6a5e', '#25355A')
+colours = c('#F20505', '#F77B1B', '#F2B749','#03A64A', '#ED3984', '#A3004F', '#7483A1', '#25355A')
+```
+
+## Load Data Set
+
+```{r}
+recall_events = read_csv('recall_data/recall_events_sq.csv')
+narrative_recall = read_csv('recall_data/recall_narrative_sq.csv')
+isc_data = read_csv('event_isc_results.csv')
+```
+
+### Functions
+
+```{r}
+split_half = function(df, col1, col2, iter) {
+  subjects = unique(df$subject)
+  split_half = tibble()
+  
+  for (i in 1:iter){
+    group1 = sample(subjects, length(subjects) / 2)
+    group2 = setdiff(subjects, group1)
+    
+    correlation = df %>% 
+      filter(subject %in% group1) %>% 
+      summarize(correlation = cor({{col1}}, {{col2}}, 
+                                  method = 'spearman')) %>% 
+      pull()
+    
+    shuffled_correlation = df %>% 
+      filter(subject %in% group2) %>% 
+      mutate(shuffled = sample({{col1}})) %>% 
+      summarize(correlation = cor(shuffled, {{col2}}, method = 'spearman')) %>% 
+      pull()
+    
+    split_half = tibble(iteration = i, 
+                        correlation = correlation, 
+                        shuffled_correlation = shuffled_correlation) %>% 
+      rbind(split_half, .)
+  }
+  
+  return(split_half)
+}
+```
+
+## Event Recall
+
+```{r}
+sb_correction = function(spearman){
+  num = 2 * spearman
+  den = 1 + spearman 
+  
+  correction = num / den
+  
+  return(correction)
+}
+```
+
+### USE
+
+#### *Split-Half Consistency*
+
+```{r}
+split_half_use = split_half(recall_events, use, rater, 10000)
+
+correlation_mean_use = mean(split_half_use$correlation)
+s1 = split_half_use %>% 
+  pivot_longer(cols = c(correlation, shuffled_correlation), 
+               names_to = 'type', values_to = 'correlation') %>% 
+	mutate(type = factor(type, levels = c('shuffled_correlation', 'correlation'))) %>% 
+  ggplot(., aes(x=correlation, fill=type)) +
+    geom_histogram(aes(y=after_stat(count)/sum(after_stat(count)))) +
+    scale_fill_manual(values = colours[c(7,1)], name='', 
+                      labels=c('Shuffled', 'Actual')) +
+    geom_vline(xintercept = correlation_mean_use, linetype='longdash') +
+    ylab('Proportion') +
+    xlab('Correlation') +
+    theme_minimal() +
+    theme(axis.title = element_text(face = 'bold'), 
+          strip.text.x = element_blank(),
+    			legend.position = 'none')
+s1
+ggsave('split_wise_use.png', dpi=300, height=5, width=4)
+ggsave('split_wise_use.svg', dpi=300, height=5, width=4)
+  
+# P-value
+mean(abs(split_half_use$shuffled_correlation) >= abs(split_half_use$correlation))
+
+# Spearman-Brown Correction
+sb_correction(correlation_mean_use)
+```
+
+#### *Multilevel Model - Correlation*
+
+```{r}
+use_model = recall_events %>%
+	mutate(use = scale(use), rater = scale(rater)) %>% 
+  lmer(rater ~ use + (1 | subject) + (1 | story_id), data=.)
+
+summary(use_model)
+tidy(use_model)
+model_parameters(use_model)
+
+c1 = recall_events %>%
+	mutate(use = scale(use), rater = scale(rater)) %>% 
+	ggplot(aes(x=use, y=rater)) +
+  geom_line(stat='smooth', method='lm', se = FALSE, alpha=0.25, 
+            aes(group=interaction(subject, story_id)), colour= colours[1]) +
+	geom_smooth(method = 'lm', linewidth=1.5, colour=colours[1]) +
+  # geom_abline(slope = 1) +
+	#scale_colour_manual(values=c('#3D97DB', '#44c3dc','#4f74c9'))+
+  labs(y = 'Rater', x = 'USE') +
+  # ylim(0,1) +
+	theme_minimal() +
+  theme(axis.title = element_text(face = 'bold'), 
+        legend.position = 'none', 
+        strip.text.x = element_blank())
+
+c1
+
+ggsave('rater_use.png', dpi=300, height=5, width=4)
+ggsave('rater_use.svg', dpi=300, height=5, width=4)
+```
+
+### OpenAI
+
+#### *Split-Wise Comparison*
+
+```{r}
+split_half_openai = split_half(recall_events, openai, rater, 10000)
+
+correlation_mean_openai = mean(split_half_openai$correlation)
+s3 = split_half_openai %>% 
+  pivot_longer(cols = c(correlation, shuffled_correlation), 
+               names_to = 'type', values_to = 'correlation') %>% 
+	mutate(type = factor(type, levels = c('shuffled_correlation', 'correlation'))) %>% 
+  ggplot(., aes(x=correlation, fill=type)) +
+    geom_histogram(aes(y=after_stat(count)/sum(after_stat(count)))) +
+    scale_fill_manual(values = colours[c(7,2)], name='', 
+                      labels=c('Shuffled', 'Actual')) +
+    geom_vline(xintercept = correlation_mean_openai, linetype='longdash') +
+    ylab('Proportion') +
+    xlab('Correlation') +
+    theme_minimal() +
+    theme(axis.title = element_text(face = 'bold'), 
+          strip.text.x = element_blank(),
+    			legend.position = 'none')
+s3
+
+# P-value
+mean(abs(split_half_openai$shuffled_correlation) >= abs(split_half_openai$correlation))
+
+# Spearman-Brown Correction
+sb_correction(correlation_mean_openai)
+```
+
+#### *Multilevel Model - Correlation*
+
+```{r}
+openai_model = recall_events %>% 
+	mutate(openai = scale(openai), rater = scale(rater)) %>% 
+  lmer(rater ~ openai + (1 | subject) + (1 | story_id), data=.)
+
+summary(openai_model)
+tidy(openai_model)
+parameters(openai_model)
+
+c3 = recall_events %>% 
+	mutate(openai = scale(openai), rater = scale(rater)) %>% 
+	ggplot(aes(x=openai, y=rater)) +
+  geom_line(stat='smooth', method='lm', se = FALSE, alpha=0.25, 
+  					aes(group=interaction(subject, story_id)), colour= colours[2]) +
+	geom_smooth(method = 'lm', linewidth=1.5, colour=colours[2]) +
+  labs(y = 'Rater', x = 'OpenAI') +
+  # ylim(0,1) +
+	theme_minimal() +
+  theme(axis.title = element_text(face = 'bold'), 
+        legend.position = 'none', 
+        strip.text.x = element_blank())
+
+c3
+```
+
+### LaBSE
+
+#### *Split-Wise Comparison*
+
+```{r}
+split_half_la = split_half(recall_events, la, rater, 10000)
+
+correlation_mean_la = mean(split_half_la$correlation)
+s4 = split_half_la %>% 
+  pivot_longer(cols = c(correlation, shuffled_correlation), 
+               names_to = 'type', values_to = 'correlation') %>% 
+	mutate(type = factor(type, levels = c('shuffled_correlation', 'correlation'))) %>% 
+  ggplot(., aes(x=correlation, fill=type)) +
+    geom_histogram(aes(y=after_stat(count)/sum(after_stat(count)))) +
+    scale_fill_manual(values = colours[c(7,3)], name='', 
+                      labels=c('Shuffled', 'Actual')) +
+    geom_vline(xintercept = correlation_mean_la, linetype='longdash') +
+    ylab('Proportion') +
+    xlab('Correlation') +
+    theme_minimal() +
+    theme(axis.title = element_text(face = 'bold'), 
+          strip.text.x = element_blank(),
+    			legend.position = 'none')
+s4
+
+# P-value
+mean(abs(split_half_la$shuffled_correlation) >= abs(split_half_la$correlation))
+
+# Spearman-Brown Correction
+sb_correction(correlation_mean_la)
+```
+
+#### *Multilevel Model*
+
+```{r}
+la_model = recall_events %>% 
+	mutate(la = scale(la), rater = scale(rater)) %>% 
+  lmer(rater ~ la + (1 | subject) + (1 | story_id), data=.)
+
+summary(la_model)
+tidy(la_model)
+parameters(la_model)
+
+c4 = recall_events %>% 
+	mutate(la = scale(la), rater = scale(rater)) %>% 
+	ggplot(aes(x=la, y=rater)) +
+  geom_line(stat='smooth', method='lm', se = FALSE, alpha=0.25, 
+  					aes(group=interaction(subject, story_id)), colour= colours[3]) +
+	geom_smooth(method = 'lm', linewidth=1.5, colour=colours[3]) +
+  labs(y = 'Rater', x = 'LaBSE') +
+  # ylim(0,1) +
+	theme_minimal() +
+  theme(axis.title = element_text(face = 'bold'), 
+        legend.position = 'none', 
+        strip.text.x = element_blank())
+
+c4
+```
+
+### MPNET
+
+#### *Split-Wise Comparison*
+
+```{r}
+split_half_mp = split_half(recall_events, mp, rater, 10000)
+
+correlation_mean_mp = mean(split_half_mp$correlation)
+s5 = split_half_mp %>% 
+  pivot_longer(cols = c(correlation, shuffled_correlation), 
+               names_to = 'type', values_to = 'correlation') %>% 
+	mutate(type = factor(type, levels = c('shuffled_correlation', 'correlation'))) %>% 
+  ggplot(., aes(x=correlation, fill=type)) +
+    geom_histogram(aes(y=after_stat(count)/sum(after_stat(count)))) +
+    scale_fill_manual(values = colours[c(7,4)], name='', 
+                      labels=c('Shuffled', 'Actual')) +
+    geom_vline(xintercept = correlation_mean_mp, linetype='longdash') +
+    ylab('Proportion') +
+    xlab('Correlation') +
+    theme_minimal() +
+    theme(axis.title = element_text(face = 'bold'), 
+          strip.text.x = element_blank(),
+    			legend.position = 'none')
+s5
+
+# P-value
+mean(abs(split_half_mp$shuffled_correlation) >= abs(split_half_mp$correlation))
+
+# Spearman-Brown Correction
+sb_correction(correlation_mean_mp)
+```
+
+#### *Multilevel Model*
+
+```{r}
+mp_model = recall_events %>% 
+	mutate(mp = scale(mp), rater = scale(rater)) %>% 
+  lmer(rater ~ mp + (1 | subject) + (1 | story_id), data=.)
+
+summary(mp_model)
+tidy(mp_model)
+parameters(mp_model)
+
+c5 = recall_events %>% 
+	mutate(mp = scale(mp), rater = scale(rater)) %>% 
+	ggplot(aes(x=mp, y=rater)) +
+  geom_line(stat='smooth', method='lm', se = FALSE, alpha=0.25, 
+  					aes(group=interaction(subject, story_id)), colour= colours[4]) +
+	geom_smooth(method = 'lm', linewidth=1.5, colour=colours[4]) +
+  labs(y = 'Rater', x = 'MPNET') +
+  # ylim(0,1) +
+	theme_minimal() +
+  theme(axis.title = element_text(face = 'bold'), 
+        legend.position = 'none', 
+        strip.text.x = element_blank())
+
+c5
+```
+
+### Statistics
+
+```{r}
+recall_events_model = recall_events %>% 
+	select(subject, story_id, event_number, use, rater, gpt, openai) %>% 
+	pivot_longer(cols = c('use', 'gpt', 'openai'), names_to = 'method', values_to = 'score') %>%
+	group_by(story_id, method) %>% 
+	mutate(z_score = scale(score)[,1],
+				 z_score_rater = scale(rater)[,1]) %>% 
+	ungroup() %>% 
+	lmer(z_score_rater ~ method * z_score + (1 + z_score | subject) + (1 | story_id), data=.)
+
+summary(recall_events_model)
+anova(recall_events_model)
+```
+
+## Narrative Recall
+
+```{r}
+lighten_colour = function(colour, factor=0.6) {
+  return(colorspace::lighten(colour, amount=factor))
+}
+
+all_colours = c(colours[1:4], sapply(colours[1:4], lighten_colour, factor=0.5))
+
+names(all_colours) = c('use_recall_score', 'openai_recall_score', 
+                       'la_recall_score', 'mp_recall_score', 
+                       'use_random_score', 'openai_random_score',
+                       'la_random_score', 'mp_random_score')
+```
+
+### Statistics
+
+```{r}
+# Scaled
+recall_narrative_model = narrative_recall %>% 
+  pivot_longer(cols=c('recall_score', 'random_score'),
+               names_to = 'score_type',
+               values_to = 'recall_score') %>% 
+  group_by(model) %>% 
+  mutate(recall_score = scale(recall_score)) %>% 
+  mutate(across(subject:score_type, as_factor)) %>% 
+  lmer(recall_score ~ score_type * model + (1 | subject) + (1 | story_id), data=.)
+
+anova(recall_narrative_model)
+eta_squared(recall_narrative_model)
+emmeans(recall_narrative_model, ~ score_type * model) %>% 
+  pairs()
+
+# Raw
+recall_narrative_model = narrative_recall %>% 
+  pivot_longer(cols=c('recall_score', 'random_score'),
+               names_to = 'score_type',
+               values_to = 'recall_score') %>% 
+  mutate(across(subject:score_type, as_factor)) %>% 
+  lmer(recall_score ~ score_type * model + (1 | subject) + (1 | story_id), data=.)
+
+anova(recall_narrative_model)
+eta_squared(recall_narrative_model)
+emmeans(recall_narrative_model, ~ score_type * model) %>% 
+  pairs()
+```
+
+```{r}
+narrative_recall = read_csv('recall_data/recall_narrative_sq.csv') %>% 
+  filter(!(subject == 17  & story_id == 3))
+
+# Scaled
+r1 = narrative_recall %>% 
+  pivot_longer(cols = c('recall_score', 'random_score'), 
+               names_to = 'score_type', values_to = 'score') %>%
+  group_by(model) %>% 
+  mutate(score = scale(score)) %>% 
+  mutate(temp_type = factor(paste(model, score_type, sep = "_"), 
+                              levels = c('use_recall_score', 'openai_recall_score',
+                       'la_recall_score', 'mp_recall_score', 
+                       'use_random_score', 'openai_random_score',
+                       'la_random_score', 'mp_random_score')),
+           model = factor(model, levels = c('use', 'openai', 'la', 'mp'))) %>% 
+  ggplot(aes(x = model, y = score, fill = as.factor(temp_type))) +
+  stat_summary(fun.data = mean_sdl, geom = 'bar', position = 'dodge') +
+  geom_line(aes(group = interaction(subject, story_id, model)),
+            alpha = 0.1, position = position_nudge(c(-.23, .23))) +
+  stat_summary(fun.data = mean_se, geom = 'errorbar', 
+               position = position_dodge(width = 0.9), 
+               linewidth = 1, width = 0.2) +
+  scale_fill_manual(values = all_colours, labels = c('Recall', 'Random')) +
+  scale_x_discrete(labels = c('USE', 'OpenAI', 'LaBSE', 'MPNET')) +
+  labs(x = 'Model', y = 'Scaled Narrative Recall Score') +
+  theme_ggdist() +
+  theme(axis.title = element_text(face = 'plain'), 
+        legend.position = 'none')
+r1
+
+# Raw
+r2 = narrative_recall %>% 
+  pivot_longer(cols = c('recall_score', 'random_score'), 
+               names_to = 'score_type', values_to = 'score') %>%
+  mutate(temp_type = factor(paste(model, score_type, sep = "_"), 
+                              levels = c('use_recall_score', 'openai_recall_score',
+                       'la_recall_score', 'mp_recall_score', 
+                       'use_random_score', 'openai_random_score',
+                       'la_random_score', 'mp_random_score')),
+           model = factor(model, levels = c('use', 'openai', 'la', 'mp'))) %>% 
+  ggplot(aes(x = model, y = score, fill = as.factor(temp_type))) +
+  stat_summary(fun.data = mean_sdl, geom = 'bar', position = 'dodge') +
+  geom_line(aes(group = interaction(subject, story_id, model)),
+            alpha = 0.1, position = position_nudge(c(-.23, .23))) +
+  stat_summary(fun.data = mean_se, geom = 'errorbar', 
+               position = position_dodge(width = 0.9), 
+               linewidth = 1, width = 0.2) +
+  scale_fill_manual(values = all_colours, labels = c('Recall', 'Random')) +
+  scale_x_discrete(labels = c('USE', 'OpenAI', 'LaBSE', 'MPNET')) +
+  labs(x = 'Model', y = 'Narrative Recall Score') +
+  theme_ggdist() +
+  theme(axis.title = element_text(face = 'plain'), 
+        legend.position = 'none')
+
+r2
+```
+
+## Intersubject Agreement
+
+### Statistics
+
+```{r}
+isc_model = isc_data %>% 
+  group_by(model, story_id, subject1) %>% 
+  summarise(isc = mean(isc), off_diag_isc = mean(off_diag_isc), .groups = 'drop') %>% 
+  pivot_longer(cols = c('isc', 'off_diag_isc'), names_to = 'type', values_to = 'isc_score') %>% 
+  rename(subject = subject1) %>% 
+  lmer(isc_score ~ type * model + (1 | subject) + (1 | story_id), data =.)
+
+anova(isc_model)
+emmeans(isc_model, ~ model) %>% 
+  pairs()
+eta_squared(isc_model)
+```
+
+### Plot
+
+```{r}
+colours = c('#F20505', '#F77B1B', '#F2B749','#03A64A')
+all_colours = c(colours, sapply(colours, lighten_colour, factor=0.5))
+names(all_colours) = c('use_isc',  'openai_isc', 'la_isc','mp_isc',
+                       'use_off_diag_isc', 'openai_off_diag_isc', '
+                       la_off_diag_isc', 'mp_off_diag_isc')
+```
+
+```{r}
+i1 = isc_data %>% 
+  group_by(model, story_id, subject1) %>% 
+  summarise(isc = mean(isc), off_diag_isc = mean(off_diag_isc), .groups = 'drop') %>% 
+  pivot_longer(cols = c('isc', 'off_diag_isc'), names_to = 'type', values_to = 'isc_score') %>% 
+  mutate(model = factor(model, levels = c('use', 'openai', 'la', 'mp'))) %>% 
+  mutate(isc_type = paste(model, type, sep = '_')) %>% 
+  ggplot(aes(model, isc_score, fill = isc_type)) +
+  stat_summary(aes(x = as.numeric(model)), fun.data = mean_se, geom = 'bar', position = 'dodge') +
+  geom_line(aes(group = interaction(model, story_id, subject1), 
+                x = as.numeric(model) + ifelse(type == "isc", -0.225, 0.225)),
+            alpha = 0.2) +
+  stat_summary(aes(x = as.numeric(model)), fun.data = mean_se, geom = 'errorbar', 
+               position = position_dodge(width = 0.9), linewidth = 1, width = 0.2) +
+  scale_fill_manual(values = all_colours) +
+  scale_x_continuous(breaks = 1:4, labels = c('USE', 'OpenAI', 'LaBSE', 'MPNet')) +
+  labs(x = 'Model', y = 'ISC Score') +
+  theme_ggdist() +
+  theme(legend.position = 'none', text = element_text(size = 16))
+i1
+```
