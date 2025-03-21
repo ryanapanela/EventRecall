@@ -34,8 +34,8 @@ colours = c('#F20505', '#F77B1B', '#F2B749','#03A64A', '#ED3984', '#A3004F', '#7
 ## Load Data Set
 
 ```{r}
-recall_events = read_csv('recall_data/recall_events_sq.csv')
-narrative_recall = read_csv('recall_data/recall_narrative_sq.csv')
+recall_events = read_csv('recall_events.csv')
+narrative_recall = read_csv('recall_narrative.csv')
 isc_data = read_csv('event_isc_results.csv')
 ```
 
