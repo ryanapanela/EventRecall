@@ -23,24 +23,25 @@ library(effectsize)
 library(readxl)
 library(patchwork)
 library(report)
-source('agreement.R')
+source('esMethods_agreement.R')
 ```
 
 ### Import Data
 
 ```{r}
-gpt_data = read_csv('gpt_segmentation_data.csv') %>% 
+data_path = 'PATH_TO/'
+gpt_data = read_csv(paste0(data_path, 'gpt_segmentation_data.csv')) %>% 
   mutate(story_id = as.factor(story_id),
   			 temperature = as.factor(temperature))
 
-gpt_series = read_csv('gpt_time_word_series.csv') %>% 
+gpt_series = read_csv(paste0(data_path,'gpt_time_word_series.csv')) %>% 
 	  mutate(story_id = as.factor(story_id),
   			 temperature = as.factor(temperature))
 
-visual_data = read_csv('visual_segmentation_data.csv') %>% 
+visual_data = read_csv(paste0(data_path,'visual_segmentation_data.csv')) %>% 
   mutate(story_id = as.factor(story_id))
 
-visual_series = read_csv('visual_time_word_data.csv') %>% 
+visual_series = read_csv(paste0(data_path,'visual_time_word_data.csv')) %>% 
   mutate(story_id = as.factor(story_id))
 ```
 
@@ -61,7 +62,7 @@ colours = c('#3895B6', '#41D3CB', '#38B686', '#5456BC')
 ```{r}
 num_events = gpt_data %>% 
   rename(group = temperature,
-         word_number = word_number) %>% 
+         word_number = word_numbers) %>% 
   rbind(., visual_data) %>% 
   group_by(subject, story_id, group) %>% 
   summarize(num_events = n()) %>% 
@@ -154,7 +155,7 @@ for (df in grouped_data){
 
 ```{r}
 grouped_data = visual_series %>% 
-  group_by(story_id, temperature) %>% 
+  group_by(story_id) %>% 
   group_split()
 
 agreement_visual = tibble()
@@ -162,7 +163,6 @@ agreement_visual = tibble()
 for (df in grouped_data){
   subjects = unique(df$subject)
   story = unique(df$story_id)
-  temperature = unique(df$temperature)
   
   print(story)
   print(temperature)
@@ -185,7 +185,7 @@ for (df in grouped_data){
     # Calculate Agreement Index
     sample = dat$responses
     group = tapply(df$responses[df$subject != subj], 
-                   df$word_series[df$subject != subj], mean)
+                   df$word_number[df$subject != subj], mean)
       
     
     agreement = agreement_index(sample, group)
@@ -195,7 +195,6 @@ for (df in grouped_data){
   
   temp = tibble(subject = unique(df$subject), 
                 story_id = story, 
-                temperature = temperature, 
                 agreement_index = ag_index[,1])
   
   agreement_visual = rbind(agreement_visual, temp)
@@ -206,14 +205,15 @@ for (df in grouped_data){
 # Compile Data
 agreement = agreement_gpt %>% 
 	rename(condition = temperature) %>% 
-	rbind(agreement_visual)
+	rbind(agreement_visual %>% 
+					mutate(condition = 'human'))
 ```
 
 ### Statistics
 
 ```{r}
 agreement_model = agreement %>% 
-  lmer(agreement_index ~ condition + (1 | subject) + (1 | story_id), data = .) 
+  lmer(agreement_index ~ condition + (1 + condition | subject) + (1 | story_id), data = .) 
 
 agreement_model %>% 
   anova()

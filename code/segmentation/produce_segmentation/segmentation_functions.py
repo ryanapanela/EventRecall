@@ -160,7 +160,7 @@ def get_output(responses, choice: int = 0):
         return responses.choices[choice].text
 
 
-def get_finish_reason(responses, choice):
+def get_finish_reason(responses, choice=0):
 	"""
 	Retrieve the finish reason for a specific choice from the responses object.
 
@@ -277,7 +277,6 @@ def llama_segmentation(text_path, iters=1, temperature=0):
 
 	for i in tqdm.tqdm(range(iter_times)):
 		curr_prompt = prompt_onset + text + prompt_offset
-
 		curr_response = prompt_llama(curr_prompt, temperature=temperature)
 
 		# Save the current model
