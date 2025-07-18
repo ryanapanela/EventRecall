@@ -245,7 +245,7 @@ def gpt_segmentation(text_path, iters=1, model='gpt-4', temperature=0):
 	return segmented_events
 
 # %% LLaMA Segmentation Function
-def llama_segmentation(text_path, iters=1, temperature=0):
+def llama_segmentation(text_path, iters=1, temperature=0.1):
 	"""
 	Segments a story into large coherent events using LLaMA.
 
@@ -264,6 +264,10 @@ def llama_segmentation(text_path, iters=1, temperature=0):
 		- The function assumes the presence of helper functions such as `clean_text`, `prompt_llama`, 
 			`parse_llm_output`, `get_output`, `get_finish_reason`, and `split_text`.
 	"""
+	# Ensure temperature is not zero
+	if temperature == 0:
+		temperature = 0.1
+
 	text = clean_text(text_path)
 
 	prompt_onset = "An event is an ongoing coherent situation. The following story needs to be copied and segmented into \
