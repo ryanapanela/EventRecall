@@ -1,16 +1,17 @@
-# segmentation.py
 # Functions for automated event segmentation
 
 import os
+import pandas as pd
+import numpy as np
 import re
 import tqdm
 import openai
 from openai import OpenAI
 import backoff
 from transformers import pipeline
+from typing import List
 
 def clean_text(text_path):
-    # ...existing code from segmentation_functions.py...
     text_file = open(text_path, 'r', encoding='utf-8-sig')
     text = text_file.read()
     text_file.close()
@@ -22,7 +23,6 @@ def clean_text(text_path):
     return text
 
 def parse_llm_output(output: str):
-    # ...existing code from segmentation_functions.py...
     temp_output = re.sub('(?<=\n)\s(?=\n)', '\n\n', output)
     temp_output = re.sub('(?<!\n)\n(?!\n)', '\n\n', temp_output)
     temp_output = re.sub(r"[0-9]+\.", "", temp_output)
@@ -35,14 +35,14 @@ def parse_llm_output(output: str):
     return temp_output
 
 @backoff.on_exception(backoff.expo, openai.RateLimitError)
-def prompt_gpt(api_key, model, message, temperature=0, max_tokens=4096, frequency_penalty=0, presence_penalty=0):
+def prompt_gpt(api_key, model, message, temperature=0, max_completion_tokens=4096, frequency_penalty=0, presence_penalty=0):
     client = OpenAI(api_key=api_key)
     prompt_message = [{"role": "user", "content": message}]
     curr_response = client.chat.completions.create(
         model=model,
         messages=prompt_message,
         temperature=temperature,
-        max_tokens=max_tokens,
+        max_completion_tokens=max_completion_tokens,
         frequency_penalty=frequency_penalty,
         presence_penalty=presence_penalty
     )
@@ -74,7 +74,7 @@ def split_text(parsed_text):
 
 def gpt_segmentation(text_path, api_key, iters=1, model='gpt-4', temperature=0):
     text = clean_text(text_path)
-    prompt_onset = "An event is an ongoing coherent situation. The following story needs to be copied and segmented into     large events. Copy the following story word-for-word and start a new line whenever one event ends and another begins.     This is the story: "
+    prompt_onset = "An event is an ongoing coherent situation. The following story needs to be copied and segmented into large events. Copy the following story word-for-word and start a new line whenever one event ends and another begins. This is the story: "
     prompt_offset = "\n This is a word-for-word copy of the same story that is segmented into large event units: "
     responses = []
     for i in tqdm.tqdm(range(iters)):
@@ -85,13 +85,14 @@ def gpt_segmentation(text_path, api_key, iters=1, model='gpt-4', temperature=0):
     finished_reasons = [get_finish_reason(item) for item in responses]
     parsed_LLM_stop = [parsed_LLM[i] for i in range(len(parsed_LLM)) if finished_reasons[i] == 'stop']
     segmented_events = split_text(parsed_LLM_stop)
+
     return segmented_events
 
 def llama_segmentation(text_path, iters=1, temperature=0.1):
     if temperature == 0:
         temperature = 0.1
     text = clean_text(text_path)
-    prompt_onset = "An event is an ongoing coherent situation. The following story needs to be copied and segmented into     large events. Copy the following story word-for-word and start a new line whenever one event ends and another begins.     This is the story: "
+    prompt_onset = "An event is an ongoing coherent situation. The following story needs to be copied and segmented into large events. Copy the following story word-for-word and start a new line whenever one event ends and another begins. This is the story: "
     prompt_offset = "\n This is a word-for-word copy of the same story that is segmented into large event units: "
     responses = []
     for i in tqdm.tqdm(range(iters)):
@@ -102,9 +103,10 @@ def llama_segmentation(text_path, iters=1, temperature=0.1):
     finished_reasons = [get_finish_reason(item) for item in responses]
     parsed_LLM_stop = [parsed_LLM[i] for i in range(len(parsed_LLM)) if finished_reasons[i] == 'stop']
     segmented_events = split_text(parsed_LLM_stop)
+    
     return segmented_events
 
-def run_segmentation(input_path, api_key, output_dir, model='gpt-4', iters=1, temperature=0):
+def run_segmentation(input_path, api_key, model='gpt-4', iters=1, temperature=0):
     """
     Run event segmentation on the input file using LLMs.
     Args:
@@ -115,18 +117,81 @@ def run_segmentation(input_path, api_key, output_dir, model='gpt-4', iters=1, te
         iters (int): Number of iterations
         temperature (float): Sampling temperature
     Returns:
-        None (saves results to output_dir)
+        segmented_events (list): List of segmented events
     """
-    if model == 'gpt-4':
-        segmented_events = gpt_segmentation(input_path, api_key, iters=iters, model=model, temperature=temperature)
-    elif model == 'llama':
+    if model == 'llama':
         segmented_events = llama_segmentation(input_path, iters=iters, temperature=temperature)
     else:
-        raise ValueError('Model must be "gpt-4" or "llama"')
-    # Save results
-    os.makedirs(output_dir, exist_ok=True)
-    out_path = os.path.join(output_dir, f'segmentation_{model}.txt')
-    with open(out_path, 'w', encoding='utf-8') as f:
-        for seg in segmented_events:
-            f.write("\n---\n".join([s for s in seg if s]) + "\n")
-    print(f"Segmentation results saved to {out_path}")
+        segmented_events = gpt_segmentation(input_path, api_key, iters=iters, model=model, temperature=temperature)
+
+    return segmented_events
+
+def find_event_boundaries(word_num: List[int]) -> List[int]:
+	"""Given a list of word numbers representing the lengths of events, 
+    return a list of integers with the associated word numbers at event boundaries.
+
+    Args:
+        word_num (list[int]): List of word numbers associated with events.
+
+    Returns:
+        list[int]: List of word numbers at event boundary locations.
+	"""
+	boundaries = []
+
+	for i in range(1, len(word_num)):
+		# Cumulative word count up to the current event and 
+		# add 1 because event boundary is located at successive word
+		word_count = sum(word_num[:i]) + 1  
+		if word_count != sum(word_num[:i - 1]):
+			boundaries.append(word_count)
+
+	return boundaries
+
+def event_data(events: list[str]) -> list[int]:
+	""" Given a list of events, return a list of integers with the associated 
+	word numbers.
+
+	Args:
+		events (list[str]): List of events from gpt_segmentation output
+
+	Return:
+		list[int]: List of word numbers associated with event boundary location
+	"""
+
+	length_events = [len(event.split()) for event in events]
+	word_boundaries = find_event_boundaries(length_events)
+
+	return word_boundaries
+
+def segmentation(input_path: str, api_key: str, output_path: str = None, model: str = 'gpt-4', iters: int = 1, temperature: float = 0) -> None:
+    """Run segmentation on the input file and save results.
+
+    Args:
+        input_path (str): Path to input file (CSV or TXT)
+        api_key (str): OpenAI API key
+        output_dir (str): Directory to save results
+        model (str): Model to use ('gpt-4' or 'llama')
+        iters (int): Number of iterations
+        temperature (float): Sampling temperature
+    """
+    segmentations = run_segmentation(input_path, api_key, model=model, iters=iters, temperature=temperature)
+    
+    rows = []
+    for iteration_idx, events in enumerate(segmentations, start=1):
+        word_boundaries = event_data(events)
+        for event_idx, (event, word_num) in enumerate(zip(events, word_boundaries), start=1):
+            rows.append({
+                'input_file': os.path.basename(input_path),
+                'iteration': iteration_idx,
+                'temperature': temperature,
+                'model': model,
+                'event_number': event_idx,
+                'event': event,
+                'word_number': word_num
+            })
+
+    output_file = pd.DataFrame(rows)
+    if output_path is not None:
+         output_file.to_csv(output_path, index=False)
+
+    return output_file, segmentations

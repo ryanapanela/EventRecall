@@ -1,10 +1,10 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="event_recall_tool",
+    name="event_recall_module",
     version="0.1.0",
-    description="Automated Event Segmentation and Recall Scoring Tool",
-    author="Your Name",
+    description="Event Segmentation Applications for LLM-Enabled Automated Recall Scoring",
+    author="Ryan A. Panela",
     packages=find_packages(),
     install_requires=[
         "openai",
@@ -12,10 +12,5 @@ setup(
         "transformers",
         "tqdm"
     ],
-    entry_points={
-        "console_scripts": [
-            "event-recall-tool=event_recall_tool.cli:main"
-        ]
-    },
     python_requires=">=3.8",
 )

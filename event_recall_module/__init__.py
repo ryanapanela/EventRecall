@@ -1,4 +1,4 @@
-# event_recall_tool
+# event_recall_module
 
 __version__ = '0.1.0'
 
