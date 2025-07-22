@@ -2,5 +2,5 @@
 
 __version__ = '0.1.0'
 
-from .segmentation import run_segmentation
-from .recall import run_recall_scoring
+from .segmentation import segmentation, run_segmentation
+from .recall import evaluate_recall, recall_matrix, recall_score
