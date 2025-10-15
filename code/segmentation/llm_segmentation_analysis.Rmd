@@ -23,7 +23,7 @@ library(effectsize)
 library(readxl)
 library(patchwork)
 library(report)
-source('esMethods_agreement.R')
+source('agreement.R')
 ```
 
 ### Import Data
@@ -306,7 +306,7 @@ agreement_model = agreement_llm_human %>%
 agreement_model %>% 
   anova()
 
-agreement_model 
+agreement_model %>%
   eta_squared()
   
 agreement_model %>% 

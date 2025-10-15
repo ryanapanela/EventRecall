@@ -23,7 +23,7 @@ library(effectsize)
 library(readxl)
 library(patchwork)
 library(report)
-source('esMethods_agreement.R')
+source('agreement.R')
 ```
 
 ### Import Data
@@ -213,7 +213,7 @@ agreement = agreement_gpt %>%
 
 ```{r}
 agreement_model = agreement %>% 
-  lmer(agreement_index ~ condition + (1 + condition | subject) + (1 | story_id), data = .) 
+  lmer(agreement_index ~ condition + (1 | story_id), data = .) 
 
 agreement_model %>% 
   anova()
@@ -293,7 +293,7 @@ agreement_model = agreement_gpt_human %>%
 agreement_model %>% 
   anova()
 
-agreement_model 
+agreement_model %>%
   eta_squared()
   
 agreement_model %>% 
