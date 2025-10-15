@@ -7,7 +7,7 @@ setup(
     author="Ryan A. Panela",
     py_modules=["segmentation", "recall", "cli", "utils"],
     package_dir={"": "module"},
-    packages=find_packages(),
+    #packages=find_packages(),
     install_requires=[
         "openai",
         "backoff",
