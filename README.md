@@ -42,8 +42,8 @@ cd EventRecall
 ```python
 from segmentation import run_segmentation
 
-narrative_events = run_segmentation('test/Run.txt', model='gpt-4', api_key='sk-...')
-recall_events = run_segmentation('test/Recall.txt', model='gpt-4', api_key='sk-...')
+narrative_events = run_segmentation('data/stories/Run.txt', model='gpt-4', api_key='sk-...')
+recall_events = run_segmentation('Recall.txt', model='gpt-4', api_key='sk-...')
 ```
 
 ### 📊 Recall Evaluation
