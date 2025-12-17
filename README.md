@@ -2,7 +2,7 @@
 EventRecall is an open-source tool for automating event segmentation and recall assessments using LLMs and sentence embeddings. It provides a scalable and efficient method to investigate event segmentation and recall accuracy, supporting both research and applied cognitive science applications.
 
 This repository contains data and scripts used for:\
-**Panela, R. A.**, Barnett, A. J., Barense, M. D., & Herrmann, B. (2025). Event Segmentation Applications in Large Language Model Enabled Automated Recall Assessments (Version 1). *arXiv*. https://doi.org/10.48550/ARXIV.2502.13349
+**Panela, R. A.**, Barnett, A. J., Barense, M. D., & Herrmann, B. (2025). Event segmentation applications in large language model enabled automated recall assessments. *Communications Psychology*, 3(1), 184. https://doi.org/10.1038/s44271-025-00359-7
 
 ---
 
